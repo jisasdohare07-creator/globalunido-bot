@@ -702,10 +702,10 @@ app.listen(PORT, '0.0.0.0', () => {
 
 function getChromeExecutablePath() {
     if (process.platform === 'win32') return null; // Use default on Windows
-    
+
     const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
     console.log(`[i] Searching for Chrome executable in cache dir: ${cacheDir}`);
-    
+
     function searchChrome(dir) {
         if (!fs.existsSync(dir)) return null;
         try {
@@ -725,13 +725,13 @@ function getChromeExecutablePath() {
         }
         return null;
     }
-    
+
     const foundPath = searchChrome(cacheDir);
     if (foundPath) {
         console.log(`[✔] Located Chrome executable: ${foundPath}`);
         return foundPath;
     }
-    
+
     const fallbacks = [
         '/usr/bin/google-chrome',
         '/usr/bin/chromium',
@@ -743,7 +743,7 @@ function getChromeExecutablePath() {
             return fb;
         }
     }
-    
+
     console.log('[!] Warning: Could not locate Chrome executable. Falling back to default Puppeteer launch.');
     return null;
 }
@@ -1052,5 +1052,19 @@ If the customer is new, politely ask for their requirements.`;
     }
 });
 
-// Start the client
-client.initialize();
+// Global Error Catching to prevent silent hangs/crashes
+process.on('uncaughtException', (err) => {
+    console.error('[🚨 UNCAUGHT EXCEPTION]:', err.stack || err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[🚨 UNHANDLED REJECTION]:', reason.stack || reason);
+});
+
+// Start the client with detailed logging
+console.log('[i] Starting WhatsApp Client (client.initialize)...');
+client.initialize().then(() => {
+    console.log('[✔] client.initialize() promise resolved successfully!');
+}).catch(err => {
+    console.error('[❌] WhatsApp Client Initialization Promise Failed:', err);
+});
