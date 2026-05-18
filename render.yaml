@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: globalunido-bot
+    runtime: node
+    buildCommand: npm install && npx puppeteer browsers install chrome
+    startCommand: node index.js
+    envVars:
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: false
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/.cache/puppeteer
+    plan: free

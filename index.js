@@ -677,10 +677,19 @@ app.listen(PORT, () => {
 // ==========================================
 
 const client = new Client({
-    authStrategy: new LocalAuth(), // Saves session so you don't have to scan QR every time
+    authStrategy: new LocalAuth(),
     puppeteer: {
-        headless: true, // Runs in background
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+        ]
     }
 });
 
@@ -939,9 +948,11 @@ client.on('message_create', async (msg) => {
             const isDriverQuery = driverInquiryKeywords.some(kw => command.includes(kw));
             if (isDriverQuery) {
                 // Play highly audible loops of system sound alert to catch user's attention!
-                const alarmCmd = `powershell -Command "[console]::beep(1200, 300); Start-Sleep -Milliseconds 100; [console]::beep(1200, 300); Start-Sleep -Milliseconds 100; [console]::beep(1200, 600)"`;
-                exec(alarmCmd);
-                console.log(`[🔔 ALARM] Played driver inquiry alarm for message: "${msg.body}" from ${msg.from}`);
+                if (isWin) {
+                    const alarmCmd = `powershell -Command "[console]::beep(1200, 300); Start-Sleep -Milliseconds 100; [console]::beep(1200, 300); Start-Sleep -Milliseconds 100; [console]::beep(1200, 600)"`;
+                    exec(alarmCmd);
+                }
+                console.log(`[🔔 ALARM] Driver inquiry detected: "${msg.body}" from ${msg.from}`);
             }
 
             // --- SMART DRIVER REGISTRATION ---

@@ -1,7 +1,7 @@
 {
-  "name": "globalunido-bot",
+  "name": "whatsapp-forwarder",
   "version": "1.0.0",
-  "description": "GLOBALUNIDO WhatsApp Automation Bot",
+  "description": "WhatsApp channel to group forwarder",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
