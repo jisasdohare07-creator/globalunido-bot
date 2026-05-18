@@ -762,7 +762,12 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--disable-extensions',
+            '--single-process',
+            '--disable-features=site-per-process',
+            '--disable-features=IsolateOrigins',
+            '--js-flags="--max-old-space-size=100"'
         ]
     }
 });

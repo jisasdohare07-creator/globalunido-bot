@@ -3,7 +3,7 @@ services:
     name: globalunido-bot
     runtime: node
     buildCommand: npm install && npx puppeteer browsers install chrome
-    startCommand: node index.js
+    startCommand: node --max-old-space-size=200 index.js
     envVars:
       - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
         value: false
