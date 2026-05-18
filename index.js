@@ -87,6 +87,30 @@ function saveDrivers(drivers) {
     }
 }
 
+const CONTACTS_FILE = path.join(__dirname, 'contacts.json');
+
+function loadContacts() {
+    try {
+        if (fs.existsSync(CONTACTS_FILE)) {
+            return JSON.parse(fs.readFileSync(CONTACTS_FILE, 'utf8'));
+        }
+    } catch (e) {
+        console.error('[!] Error loading contacts:', e.message);
+    }
+    return {};
+}
+
+function saveContacts(contacts) {
+    try {
+        fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[!] Error saving contacts:', e.message);
+    }
+}
+
+global.chatSessions = new Map();
+
+
 // Function to parse cities, weight, and vehicle from load text
 function parseLoadText(text) {
     let fromPlace = "Anywhere";
@@ -323,7 +347,7 @@ function downloadAllDefaultMusic() {
                         console.log(`[✔] Creative song downloaded: ${song.name}`);
                     });
                 }).on('error', err => {
-                    fs.unlink(destPath, () => {});
+                    fs.unlink(destPath, () => { });
                     console.error(`[!] Failed to download ${song.name}:`, err.message);
                 });
             }
@@ -507,7 +531,7 @@ async function processConfirmedLoad(channelName, originalNumber, originalEmail, 
             const drivers = loadDrivers();
             const matchedDrivers = [];
             const loadWords = originalText.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length >= 4);
-            
+
             for (const driver of drivers) {
                 const driverMsgClean = driver.message.toLowerCase();
                 const hasMatch = loadWords.some(word => {
@@ -515,7 +539,7 @@ async function processConfirmedLoad(channelName, originalNumber, originalEmail, 
                     if (ignores.includes(word)) return false;
                     return driverMsgClean.includes(word);
                 });
-                
+
                 if (hasMatch) {
                     matchedDrivers.push(driver);
                 }
@@ -668,18 +692,69 @@ app.get('/', (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`[✔] Cloud Web Server listening on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[✔] Cloud Web Server listening on port ${PORT} (0.0.0.0)`);
 });
 
 // ==========================================
 // 🔵 AUTOMATION LOGIC / कोडिंग (नीचे कुछ मत बदलें)
 // ==========================================
 
+function getChromeExecutablePath() {
+    if (process.platform === 'win32') return null; // Use default on Windows
+    
+    const cacheDir = process.env.PUPPETEER_CACHE_DIR || '/opt/render/.cache/puppeteer';
+    console.log(`[i] Searching for Chrome executable in cache dir: ${cacheDir}`);
+    
+    function searchChrome(dir) {
+        if (!fs.existsSync(dir)) return null;
+        try {
+            const files = fs.readdirSync(dir);
+            for (const file of files) {
+                const fullPath = path.join(dir, file);
+                const stat = fs.statSync(fullPath);
+                if (stat.isDirectory()) {
+                    const found = searchChrome(fullPath);
+                    if (found) return found;
+                } else if (file === 'chrome') {
+                    return fullPath;
+                }
+            }
+        } catch (e) {
+            // Ignore read errors
+        }
+        return null;
+    }
+    
+    const foundPath = searchChrome(cacheDir);
+    if (foundPath) {
+        console.log(`[✔] Located Chrome executable: ${foundPath}`);
+        return foundPath;
+    }
+    
+    const fallbacks = [
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser'
+    ];
+    for (const fb of fallbacks) {
+        if (fs.existsSync(fb)) {
+            console.log(`[✔] Using fallback Chrome path: ${fb}`);
+            return fb;
+        }
+    }
+    
+    console.log('[!] Warning: Could not locate Chrome executable. Falling back to default Puppeteer launch.');
+    return null;
+}
+
+const chromePath = getChromeExecutablePath();
+
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
+        executablePath: chromePath || undefined,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -687,7 +762,6 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',
             '--disable-gpu'
         ]
     }
@@ -704,7 +778,7 @@ client.on('ready', () => {
     console.log('\n[✔] WhatsApp Web is Ready & Automation Started!');
     console.log(`[i] Listening for messages from these channels: ${SOURCE_CHANNELS.join(", ")}`);
     console.log(`[i] Will forward to group: "${TARGET_GROUP_NAME}"\n`);
-    
+
     isBotLoggedIn = true;
     latestQRCode = null;
 
@@ -724,7 +798,7 @@ client.on('message_create', async (msg) => {
         const chat = await msg.getChat();
 
         // Direct matching of all chats to maximize coverage and attendee accuracy!
-        const isTargetChannel = SOURCE_CHANNELS.some(channelName => 
+        const isTargetChannel = SOURCE_CHANNELS.some(channelName =>
             chat.name && chat.name.toLowerCase().includes(channelName.toLowerCase())
         );
 
@@ -768,7 +842,7 @@ client.on('message_create', async (msg) => {
             if (foundPhones && foundPhones.length > 0) {
                 const rawPhone = foundPhones[0];
                 const cleanPhone = rawPhone.replace(/\D/g, ''); // keep only digits
-                
+
                 // Standardize to 10 digits
                 let tenDigitPhone = cleanPhone;
                 if (cleanPhone.length > 10) {
@@ -784,7 +858,7 @@ client.on('message_create', async (msg) => {
                 if (tenDigitPhone.length === 10 && tenDigitPhone !== MY_NUMBER) {
                     const loaderWID = `91${tenDigitPhone}@c.us`;
                     const inquiryText = `नमस्ते सर! क्या यह लोड अभी खाली (Available) है? 🚚\n\n*लोड डिटेल्स:*\n${originalText}`;
-                    
+
                     inquirySent = true;
                     // Short delay of 3 seconds to feel human/natural
                     setTimeout(async () => {
@@ -810,8 +884,7 @@ client.on('message_create', async (msg) => {
                                         if (!inquiryObj.autoForwarded) {
                                             inquiryObj.autoForwarded = true;
                                             console.log(`[⏳] 5 Minutes Timeout: Loader ${loaderWID} did not respond. Auto-forwarding load details now to prevent loss!`);
-                                            
-                                            // Process and capture groupMsg so we can reply/cancel later if needed
+
                                             const groupMsg = await processConfirmedLoad(
                                                 inquiryObj.channelName,
                                                 inquiryObj.originalNumber,
@@ -840,88 +913,13 @@ client.on('message_create', async (msg) => {
             if (!inquirySent) {
                 await processConfirmedLoad(chat.name, originalNumber, originalEmail, originalText, modifiedText, true); // direct confirmed loads are always marked as urgent!
             }
-        } else if (!msg.fromMe) {
-            // Conversational Chatbot Logic for Loader Auto-Inquiries
-            if (global.pendingInquiries && global.pendingInquiries.has(msg.from)) {
-                const replyText = msg.body.toLowerCase().trim();
+        } else if (!msg.fromMe && !msg.from.includes('@g.us') && !msg.from.includes('@broadcast')) {
+            // ==========================================
+            // 🤖 ZABIR AI: FULL CONVERSATIONAL AGENT
+            // ==========================================
 
-                // Simple yes/no detection in Hindi and English
-                const yesKeywords = ['yes', 'available', 'haa', 'ha', 'y', 'hai', 'है', 'हाँ', 'h', 'avail', 'khali', 'खाली', 'he', 'hoga', 'hai sir', 'ha sir'];
-                const noKeywords = ['no', 'nhi', 'ni', 'nahi', 'booked', 'n', 'नहीं', 'नही', 'बुक', 'ho gaya', 'nahi hai', 'no sir', 'nhi sir'];
-
-                const isYes = yesKeywords.some(kw => replyText.includes(kw));
-                const isNo = noKeywords.some(kw => replyText.includes(kw));
-
-                if (isYes) {
-                    const inquiry = global.pendingInquiries.get(msg.from);
-                    
-                    if (inquiry.autoForwarded) {
-                        console.log(`[✔] Loader (${msg.from}) confirmed load LATE (after 5-minute timeout). Re-posting details with URGENT tag for double boost!`);
-                        
-                        // Repost with URGENT tag
-                        await processConfirmedLoad(inquiry.channelName, inquiry.originalNumber, inquiry.originalEmail, inquiry.originalText, inquiry.modifiedText, true, msg.from);
-
-                        const positiveReply = `बहुत-बहुत धन्यवाद सर! लोड को URGENT (बेहद जरूरी) मार्क करके दोबारा सभी ग्रुप्स और इंस्टाग्राम पर पब्लिश कर दिया गया है! 👍`;
-                        await msg.reply(positiveReply);
-                    } else {
-                        // Regular flow before timeout - Mark as URGENT!
-                        await processConfirmedLoad(inquiry.channelName, inquiry.originalNumber, inquiry.originalEmail, inquiry.originalText, inquiry.modifiedText, true, msg.from);
-                        
-                        const positiveReply = `ठीक है सर, लोड को कन्फर्म करके बेहद जरूरी (URGENT) मार्क करके सभी जगह पब्लिश कर दिया गया है। जैसे ही गाड़ी मिलेगी हम तुरंत भेज देंगे। धन्यवाद! 👍`;
-                        await msg.reply(positiveReply);
-                        console.log(`[✔] Loader (${msg.from}) confirmed load before timeout. Auto-response sent.`);
-                    }
-
-                    global.pendingInquiries.delete(msg.from); // Clear state
-                    return; // stop execution
-                } else if (isNo) {
-                    const inquiry = global.pendingInquiries.get(msg.from);
-                    
-                    if (inquiry.autoForwarded) {
-                        console.log(`[⚠️ ALERT] Loader (${msg.from}) replied NO/BOOKED late. Sending immediate BOOKED correction to groups!`);
-                        
-                        // 1. Reply directly to the original WhatsApp group post to show it's booked!
-                        if (inquiry.groupMsg) {
-                            try {
-                                await inquiry.groupMsg.reply(`❌❌ *LOAD BOOKED / लोड बुक हो चुका है!* ❌❌\n\nड्राइवर भाई साहब ध्यान दें, यह लोड अब बुक हो चुका है। कृपया इसके लिए कॉल न करें!`);
-                                console.log('[✔] Posted direct WhatsApp reply correction marking load as Booked!');
-                            } catch (replyErr) {
-                                console.error('[!] Failed to reply directly to message:', replyErr.message);
-                            }
-                        } else {
-                            // Fallback if message object was not captured
-                            const chats = await client.getChats();
-                            const targetGroup = chats.find(c => c.name === TARGET_GROUP_NAME && c.isGroup);
-                            if (targetGroup) {
-                                await client.sendMessage(targetGroup.id._serialized, `❌❌ *LOAD BOOKED / लोड बुक हो चुका है!* ❌❌\n\n*विवरण (Details):*\n${inquiry.modifiedText}`);
-                            }
-                        }
-
-                        // 2. Post BOOKED correction to Instagram DM group
-                        await sendToInstagramGroup(TARGET_GROUP_NAME, `❌❌ *LOAD BOOKED / लोड बुक हो चुका है!* ❌❌\n\nयह लोड अब बुक हो चुका है।`);
-
-                        // 3. Send alert message to the user
-                        const userWID = `91${MY_NUMBER}@c.us`;
-                        await client.sendMessage(userWID, `⚠️ *ALERT / अलर्ट* ⚠️\nलोडर ने अभी बताया कि नीचे दिया गया लोड बुक हो चुका है! मैंने ग्रुप और इंस्टाग्राम पर तुरंत *BOOKED* का मैसेज पोस्ट कर दिया है ताकि कोई ड्राइवर कॉल न करे।\n\n*विवरण:*\n${inquiry.modifiedText}`);
-
-                    } else {
-                        // Cancelled before timeout - No posts made
-                        console.log(`[✔] Loader (${msg.from}) replied NO before timeout. Cancelled load forwarding.`);
-                    }
-
-                    const negativeReply = `कोई बात नहीं सर! आपको कभी भी भविष्य में गाड़ी (Truck) चाहिए हो तो हमें इस नंबर पर संपर्क करें: 📞 ${MY_NUMBER}`;
-                    await msg.reply(negativeReply);
-                    global.pendingInquiries.delete(msg.from); // Clear state
-                    return; // stop execution
-                } else {
-                    // Clear state to avoid locking normal conversation
-                    global.pendingInquiries.delete(msg.from);
-                }
-            }
-
+            // First, process commands
             const command = msg.body.toLowerCase().trim();
-
-            // WhatsApp Command to Send Excel Sheet directly to the user's phone!
             if (command === 'excel' || command === 'send excel' || command === 'report') {
                 if (fs.existsSync(EXCEL_PATH)) {
                     try {
@@ -938,72 +936,114 @@ client.on('message_create', async (msg) => {
                 return; // stop execution
             }
 
-            // --- DRIVER INQUIRY ALARM NOTIFICATION ---
-            const driverInquiryKeywords = [
-                'mujhe chahiye', 'khali hai', 'gadi hai', 'dilado', 'load chahiye', 'available', 'interested', 
-                'booking', 'book krna', 'contact me', 'call me', 'gadi available', 'gadi he', 'gadi khali',
-                'chahiye', 'loading', 'mujhe do', 'gaddi hai', 'gaadi khali'
-            ];
-            
-            const isDriverQuery = driverInquiryKeywords.some(kw => command.includes(kw));
-            if (isDriverQuery) {
-                // Play highly audible loops of system sound alert to catch user's attention!
-                if (isWin) {
-                    const alarmCmd = `powershell -Command "[console]::beep(1200, 300); Start-Sleep -Milliseconds 100; [console]::beep(1200, 300); Start-Sleep -Milliseconds 100; [console]::beep(1200, 600)"`;
-                    exec(alarmCmd);
+            // --- ZABIR AI CHAT LOGIC ---
+            const userPhone = msg.from;
+            const userMessage = msg.body.trim();
+
+            let contacts = loadContacts();
+            let isNewContact = false;
+
+            if (!contacts[userPhone]) {
+                isNewContact = true;
+                contacts[userPhone] = { firstSeen: Date.now() };
+                saveContacts(contacts);
+            }
+
+            try {
+                const apiKey = process.env.GEMINI_API_KEY || global.GEMINI_API_KEY || "";
+                if (!apiKey) {
+                    console.log("[!] Gemini API Key missing, Zabir AI cannot respond.");
+                    return;
                 }
-                console.log(`[🔔 ALARM] Driver inquiry detected: "${msg.body}" from ${msg.from}`);
-            }
 
-            // --- SMART DRIVER REGISTRATION ---
-            const driverKeywords = ['load chahiye', 'gadi khali', 'truck available', 'truck khali', 'load required', 'gadi hai', 'गाड़ी खाली', 'गाडी खाली', 'लोड चाहिए', 'gaadi khali'];
-            const lowerMsg = msg.body.toLowerCase();
-            const isDriver = driverKeywords.some(kw => lowerMsg.includes(kw)) || (lowerMsg.includes('to') && (lowerMsg.includes('load') || lowerMsg.includes('gadi') || lowerMsg.includes('gaadi')));
+                const genAI = new GoogleGenerativeAI(apiKey);
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-            if (isDriver) {
-                let drivers = loadDrivers();
-                // Remove old request from this driver to prevent duplicate messages
-                drivers = drivers.filter(d => d.sender !== msg.from);
-                drivers.push({
-                    sender: msg.from,
-                    message: msg.body,
-                    timestamp: Date.now()
-                });
-                saveDrivers(drivers);
-                
-                await msg.reply("ठीक है भाई साहब! आपकी गाड़ी की लोकेशन और रूट मैंने नोट कर ली है। जैसे ही हमारे पास आपकी गाड़ी के लिए कोई कन्फर्म लोड आएगा, सिस्टम आपको तुरंत पर्सनल व्हाट्सएप मैसेज भेज देगा! 🚚👍");
-                console.log(`[✔] Registered/updated driver: ${msg.from}`);
-                return; // stop further execution
-            }
+                // Initialize chat session if it doesn't exist
+                if (!global.chatSessions.has(userPhone)) {
 
-            // Auto-Responder for Private Chats
-            const keywords = ['transport', 'load', 'truck', 'tempo', 'delivery', 'maal', 'माल', 'ट्रांसपोर्ट', 'गाड़ी', 'gadi', 'freight'];
-            
-            // Check if message contains any keyword
-            const containsKeyword = keywords.some(keyword => lowerMsg.includes(keyword));
-            
-            if (containsKeyword) {
-                // To avoid spamming, check if we already sent them an invite in this session
-                if (!global.invitedUsers) global.invitedUsers = new Set();
-                
-                if (!global.invitedUsers.has(msg.from)) {
-                    const chats = await client.getChats();
-                    const targetGroup = chats.find(c => c.name === TARGET_GROUP_NAME && c.isGroup);
-                    
-                    if (targetGroup) {
-                        try {
+                    // Fetch available drivers/trucks context
+                    const driversData = loadDrivers().map(d => `- ${d.message}`).join('\n');
+
+                    const systemInstruction = `You are Zabir, a highly professional transporter, logistics manager, and the owner of the GLOBALUNIDO Instagram channel and logistics network.
+You are chatting with a customer/driver on WhatsApp.
+Your goal is to build relationships, provide information about available trucks or loads, and successfully close logistics deals.
+ALWAYS introduce yourself FIRST in the very beginning of a new conversation (e.g., "Hi, I am Zabir from GLOBALUNIDO...").
+You must act like a human companion and partner who wants to grow the company together with the client.
+Try to negotiate and finalize deals. You cannot make decisions outside of these commission rates:
+- 4 wheel truck: 4% of total amount
+- 6 wheel truck: 6%
+- 10,12 wheel truck: 6%
+- 14,16 wheel truck: 6%
+- 18,22 wheel truck: 6%
+- Mining trucks (per month): 12W: 8000, 14W: 10000, 16W: 12000, 18W: 15000, 22W: 18000.
+If the customer asks for trucks, use this currently available truck data (if any):
+${driversData}
+CRITICAL RULE: If the customer agrees to a deal and the deal is finalized, you MUST include the exact exact text "[DEAL_CLOSED]" somewhere in your response. This will trigger an alarm to the owner. Do not use this tag unless the deal is fully agreed upon.
+If the customer is new, politely ask for their requirements.`;
+
+                    const chatSession = model.startChat({
+                        history: [
+                            {
+                                role: "user",
+                                parts: [{ text: "SYSTEM PROMPT: " + systemInstruction }],
+                            },
+                            {
+                                role: "model",
+                                parts: [{ text: "Understood. I am Zabir, the logistics manager for GLOBALUNIDO. I will act exactly as instructed." }],
+                            },
+                        ],
+                    });
+                    global.chatSessions.set(userPhone, chatSession);
+                }
+
+                const chatSession = global.chatSessions.get(userPhone);
+
+                // If this is a new contact, we forcibly append the invite link instruction
+                let promptToSend = userMessage;
+                if (isNewContact) {
+                    promptToSend = `[SYSTEM NOTE: This is a new contact! You MUST introduce yourself as Zabir, warmly welcome them to GLOBALUNIDO, and YOU MUST provide this exact group invite link in your response: "https://chat.whatsapp.com/invite_placeholder"]\n\nUser says: ` + userMessage;
+                }
+
+                console.log(`[i] Zabir AI is thinking about reply to ${userPhone}...`);
+                const result = await chatSession.sendMessage(promptToSend);
+                let responseText = result.response.text();
+
+                // Check for Deal Closure Alarm
+                if (responseText.includes('[DEAL_CLOSED]')) {
+                    responseText = responseText.replace('[DEAL_CLOSED]', '').trim();
+                    console.log(`[🚨 ALARM] Zabir AI closed a deal with ${userPhone}!`);
+
+                    // Alert the owner
+                    const ownerWID = `91${MY_NUMBER}@c.us`;
+                    const alertMsg = `🚨 *URGENT ALARM: DEAL CLOSED!* 🚨\n\nZabir AI ने अभी एक डील पक्की की है!\n\n*Customer Number:* ${userPhone.replace('@c.us', '')}\n\n*Aakhri Message:*\n${userMessage}`;
+                    await client.sendMessage(ownerWID, alertMsg);
+                }
+
+                // If new contact, swap placeholder with actual invite code if possible
+                if (isNewContact) {
+                    try {
+                        const chats = await client.getChats();
+                        const targetGroup = chats.find(c => c.name === TARGET_GROUP_NAME && c.isGroup);
+                        if (targetGroup) {
                             const inviteCode = await targetGroup.getInviteCode();
-                            const inviteLink = `https://chat.whatsapp.com/${inviteCode}`;
-                            
-                            const replyMessage = `नमस्ते! *${MY_COMPANY}* में आपका स्वागत है। 🚚\n\nट्रांसपोर्ट और लोडिंग की रोज़ाना अपडेट्स और पूछताछ के लिए कृपया हमारे ऑफिशियल ग्रुप से जुड़ें:\n👉 ${inviteLink}`;
-                            
-                            await msg.reply(replyMessage);
-                            global.invitedUsers.add(msg.from);
-                            console.log(`[+] Sent auto-reply & invite link to ${msg.from}`);
-                        } catch (err) {
-                            console.error('\n[!] ERROR: Could not get Group Invite Link! Make sure your WhatsApp number is an ADMIN of the group "GlobalUnido loading requirements"!\n');
+                            responseText = responseText.replace('https://chat.whatsapp.com/invite_placeholder', `https://chat.whatsapp.com/${inviteCode}`);
+                        } else {
+                            responseText = responseText.replace('https://chat.whatsapp.com/invite_placeholder', '');
                         }
+                    } catch (e) {
+                        responseText = responseText.replace('https://chat.whatsapp.com/invite_placeholder', '');
                     }
+                }
+
+                await msg.reply(responseText);
+                console.log(`[✔] Zabir AI replied to ${userPhone}`);
+
+            } catch (aiErr) {
+                console.error('[!] Zabir AI Error:', aiErr.message);
+                // Fallback to simple reply if AI fails
+                if (isNewContact) {
+                    await msg.reply(`नमस्ते! मैं Zabir हूँ, GLOBALUNIDO से। 🚚\nमुझे अभी रिप्लाई करने में दिक्कत आ रही है। कृपया थोड़ी देर में मैसेज करें या कॉल करें: 📞 ${MY_NUMBER}`);
                 }
             }
         }
