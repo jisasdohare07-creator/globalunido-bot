@@ -842,16 +842,15 @@ mongoose.connect(MONGO_URI).then(() => {
     client.on('auth_failure', (msg) => {
         console.error('[!] Auth failure:', msg);
         isBotLoggedIn = false;
+        console.log('[i] Exiting process to allow Render to restart container cleanly...');
+        process.exit(1);
     });
 
     client.on('disconnected', (reason) => {
         console.log('[!] WhatsApp client disconnected:', reason);
         isBotLoggedIn = false;
-        // Auto reconnect after 5 seconds
-        setTimeout(() => {
-            console.log('[i] Attempting to reconnect...');
-            client.initialize().catch(e => console.error('[!] Reconnect failed:', e.message));
-        }, 5000);
+        console.log('[i] Exiting process to allow Render to restart container cleanly...');
+        process.exit(1);
     });
 
     client.on('message', async (msg) => {
